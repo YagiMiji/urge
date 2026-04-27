@@ -182,10 +182,16 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     av1player
     components_network
   )
+  target_compile_definitions(engine_content
+   PRIVATE
+    ASIO_STANDALONE=1
+    _WEBSOCKETPP_CPP11_STL_=1
+    _WEBSOCKETPP_CPP11_RANDOM_DEVICE_=1
+  )
 endif()
 
 if (MSVC)
-  target_compile_options(engine_content PRIVATE /WX /wd4267 /wd4244)
+  target_compile_options(engine_content PRIVATE /WX /wd4267 /wd4244 /wd4805 /wd4127)
 else ()
   target_compile_options(engine_content PRIVATE -Werror)
 endif ()
