@@ -37,7 +37,8 @@ RenderScreenImpl::RenderScreenImpl(ExecutionContext* execution_context,
       frozen_(false),
       brightness_(255),
       frame_count_(0),
-      frame_rate_(frame_rate) {
+      frame_rate_(frame_rate),
+      render_filter_(FILTER_NONE) {
   // Setup render device on render thread if possible
   GPUCreateGraphicsHostInternal();
 
@@ -479,6 +480,17 @@ URGE_DEFINE_OVERRIDE_ATTRIBUTE(
     { return SDL_GetWindowTitle(context()->window->AsSDLWindow()); },
     { SDL_SetWindowTitle(context()->window->AsSDLWindow(), value.c_str()); });
 
+URGE_DEFINE_OVERRIDE_ATTRIBUTE(
+    RenderFilter,
+    Graphics::RenderFilter,
+    RenderScreenImpl,
+    { return static_cast<Graphics::RenderFilter>(render_filter_); },
+    {
+      render_filter_ = std::clamp<int32_t>(static_cast<int32_t>(value),
+                                           Graphics::FILTER_NONE,
+                                           Graphics::FILTER_NUMS - 1);
+    });
+
 void RenderScreenImpl::FrameProcessInternal(
     Diligent::ITexture* present_target) {
   // Increase frame render count
@@ -487,8 +499,18 @@ void RenderScreenImpl::FrameProcessInternal(
   // Determine wait delay time
   limiter_.Delay();
 
+  // Apply optional global post-process filter; result is forwarded to ImGui
+  // present site by the tick handler.  When FILTER_NONE is selected we
+  // forward the raw present_target unchanged.
+  Diligent::ITexture* tick_target = present_target;
+  if (render_filter_ != FILTER_NONE) {
+    GPUApplyPostFXInternal(context()->primary_render_context, present_target,
+                           gpu_.post_buffer);
+    tick_target = gpu_.post_buffer;
+  }
+
   // Tick callback
-  frame_tick_handler_.Run(present_target);
+  frame_tick_handler_.Run(tick_target);
 }
 
 void RenderScreenImpl::RenderFrameInternal(Diligent::ITexture* render_target,
@@ -544,6 +566,17 @@ void RenderScreenImpl::GPUCreateGraphicsHostInternal() {
   gpu_.effect_binding =
       context()->render.pipeline_loader->color.CreateBinding();
 
+  // Create post-process resources (CRT filter, future filters share the
+  // same vertex/index/uniform plumbing — only the binding/pipeline differ).
+  gpu_.post_quads = renderer::QuadBatch::Make(**context()->render_device);
+  gpu_.crt_binding =
+      context()->render.pipeline_loader->crt_filter.CreateBinding();
+  Diligent::CreateUniformBuffer(
+      **context()->render_device,
+      sizeof(renderer::Binding_CRTFilter::Params),
+      "graphics.crt.uniform", &gpu_.crt_uniform_buffer,
+      Diligent::USAGE_DEFAULT);
+
   // Create screen buffer
   GPUResetScreenBufferInternal();
 }
@@ -571,6 +604,7 @@ void RenderScreenImpl::GPUResetScreenBufferInternal() {
   gpu_.frozen_depth_stencil.Release();
   gpu_.transition_buffer.Release();
   gpu_.transition_depth_stencil.Release();
+  gpu_.post_buffer.Release();
 
   // Color attachment
   renderer::CreateTexture2D(
@@ -584,6 +618,11 @@ void RenderScreenImpl::GPUResetScreenBufferInternal() {
   renderer::CreateTexture2D(
       **context()->render_device, &gpu_.transition_buffer,
       "screen.transition.buffer", context()->resolution,
+      Diligent::USAGE_DEFAULT,
+      Diligent::BIND_RENDER_TARGET | Diligent::BIND_SHADER_RESOURCE);
+  renderer::CreateTexture2D(
+      **context()->render_device, &gpu_.post_buffer,
+      "screen.post.buffer", context()->resolution,
       Diligent::USAGE_DEFAULT,
       Diligent::BIND_RENDER_TARGET | Diligent::BIND_SHADER_RESOURCE);
 
@@ -830,6 +869,85 @@ void RenderScreenImpl::GPURenderVagueTransitionFrameInternal(
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
   // Execute render command
+  Diligent::DrawIndexedAttribs draw_indexed_attribs;
+  draw_indexed_attribs.NumIndices = 6;
+  draw_indexed_attribs.IndexType = context()->render.quad_index->GetIndexType();
+  render_context->DrawIndexed(draw_indexed_attribs);
+}
+
+void RenderScreenImpl::GPUApplyPostFXInternal(
+    Diligent::IDeviceContext* render_context,
+    Diligent::ITexture* src,
+    Diligent::ITexture* dst) {
+  const base::Vec2i screen_size = context()->resolution;
+
+  // Pick PSO + binding for the active filter.  Future filters extend this
+  // switch and bring their own pipeline + binding + uniform layout.
+  Diligent::IPipelineState* pipeline = nullptr;
+  switch (render_filter_) {
+    case FILTER_CRT:
+      pipeline = context()->render.pipeline_states->crt_filter.RawPtr();
+      break;
+    default:
+      // Should not reach: the caller guards on FILTER_NONE.
+      return;
+  }
+
+  // Update CRT uniform constants.  Hard-coded defaults per task plan D3=A.
+  renderer::Binding_CRTFilter::Params uniform;
+  uniform.Params0 = base::Vec4(static_cast<float>(screen_size.x),
+                               static_cast<float>(screen_size.y),
+                               240.0f,  // scanline_count
+                               0.4f);   // scanline_intensity
+  uniform.Params1 = base::Vec4(0.5f,    // grille_intensity
+                               0.1f,    // curvature
+                               0.3f,    // vignette_strength
+                               1.4f);   // brightness
+  render_context->UpdateBuffer(
+      gpu_.crt_uniform_buffer, 0, sizeof(uniform), &uniform,
+      Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+  // Full-screen quad in pixel coordinates - root_transform takes it to NDC.
+  renderer::Quad post_quad;
+  renderer::Quad::SetPositionRect(&post_quad, base::Rect(screen_size));
+  renderer::Quad::SetTexCoordRectNorm(
+      &post_quad, base::RectF(base::Vec2(0), base::Vec2(1)));
+  renderer::Quad::SetColor(&post_quad, base::Vec4(1.0f));
+  gpu_.post_quads.QueueWrite(render_context, &post_quad);
+
+  // Bind dst as render target.
+  auto* render_target_view =
+      dst->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET);
+  render_context->SetRenderTargets(
+      1, &render_target_view, nullptr,
+      Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+  const float clear_color[] = {0.0f, 0.0f, 0.0f, 1.0f};
+  render_context->ClearRenderTarget(
+      render_target_view, clear_color,
+      Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+  Diligent::Rect post_scissor(0, 0, screen_size.x, screen_size.y);
+  render_context->SetScissorRects(1, &post_scissor, UINT32_MAX, UINT32_MAX);
+
+  // Hook up shader resources.
+  gpu_.crt_binding.u_transform->Set(gpu_.root_transform);
+  gpu_.crt_binding.u_texture->Set(
+      src->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE));
+  gpu_.crt_binding.u_params->Set(gpu_.crt_uniform_buffer);
+
+  render_context->SetPipelineState(pipeline);
+  render_context->CommitShaderResources(
+      *gpu_.crt_binding,
+      Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+  Diligent::IBuffer* const vertex_buffer = *gpu_.post_quads;
+  render_context->SetVertexBuffers(
+      0, 1, &vertex_buffer, nullptr,
+      Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+  render_context->SetIndexBuffer(
+      **context()->render.quad_index, 0,
+      Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
   Diligent::DrawIndexedAttribs draw_indexed_attribs;
   draw_indexed_attribs.NumIndices = 6;
   draw_indexed_attribs.IndexType = context()->render.quad_index->GetIndexType();

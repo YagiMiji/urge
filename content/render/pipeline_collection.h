@@ -48,6 +48,8 @@ struct PipelineCollection {
 
   PipelineObject yuv;
 
+  PipelineObject crt_filter;
+
   PipelineObject window;
   PipelineObject window_with_stencil;
   PipelineObject color_write_stencil;

@@ -6,6 +6,7 @@
 
 #include "base/debug/logging.h"
 #include "renderer/pipeline/builtin_hlsl.h"
+#include "renderer/pipeline/builtin_hlsl_postfx.h"
 
 namespace renderer {
 
@@ -514,6 +515,34 @@ PIPELINE_HEADER(YUV) {
       {
           Diligent::SHADER_TYPE_PIXEL,
           "u_TextureV",
+          init_params.immutable_sampler,
+      },
+  };
+
+  auto binding0 = MakeResourceSignature(variables, samplers, 0);
+  SetupPipelineBasis(shader_source, Vertex::GetLayout(), {binding0});
+}
+
+PIPELINE_HEADER(CRTFilter) {
+  const ShaderSource shader_source{kHLSL_CRTFilter_Vertex,
+                                   kHLSL_CRTFilter_Pixel, "crt.filter"};
+
+  const std::vector<Diligent::PipelineResourceDesc> variables = {
+      {Diligent::SHADER_TYPE_VERTEX, "WorldMatrixBuffer",
+       Diligent::SHADER_RESOURCE_TYPE_CONSTANT_BUFFER,
+       Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+      {Diligent::SHADER_TYPE_PIXEL, "u_Texture",
+       Diligent::SHADER_RESOURCE_TYPE_TEXTURE_SRV,
+       Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+      {Diligent::SHADER_TYPE_PIXEL, "CRTUniformConstants",
+       Diligent::SHADER_RESOURCE_TYPE_CONSTANT_BUFFER,
+       Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+  };
+
+  const std::vector<Diligent::ImmutableSamplerDesc> samplers = {
+      {
+          Diligent::SHADER_TYPE_PIXEL,
+          "u_Texture",
           init_params.immutable_sampler,
       },
   };

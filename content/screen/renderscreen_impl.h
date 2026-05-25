@@ -42,6 +42,12 @@ class RenderScreenImpl : public Graphics, public EngineObject {
     renderer::QuadBatch transition_quads;
     renderer::Binding_AlphaTrans transition_binding_alpha;
     renderer::Binding_VagueTrans transition_binding_vague;
+
+    // Full-screen post-process target (output of GPUApplyPostFXInternal).
+    RRefPtr<Diligent::ITexture> post_buffer;
+    renderer::QuadBatch post_quads;
+    renderer::Binding_CRTFilter crt_binding;
+    RRefPtr<Diligent::IBuffer> crt_uniform_buffer;
   };
 
   RenderScreenImpl(ExecutionContext* execution_context, uint32_t frame_rate);
@@ -129,6 +135,7 @@ class RenderScreenImpl : public Graphics, public EngineObject {
   URGE_DECLARE_OVERRIDE_ATTRIBUTE(Ox, int32_t);
   URGE_DECLARE_OVERRIDE_ATTRIBUTE(Oy, int32_t);
   URGE_DECLARE_OVERRIDE_ATTRIBUTE(WindowTitle, std::string);
+  URGE_DECLARE_OVERRIDE_ATTRIBUTE(RenderFilter, RenderFilter);
 
  private:
   void FrameProcessInternal(Diligent::ITexture* present_target);
@@ -138,6 +145,9 @@ class RenderScreenImpl : public Graphics, public EngineObject {
   void GPUCreateGraphicsHostInternal();
   void GPUUpdateScreenWorldInternal();
   void GPUResetScreenBufferInternal();
+  void GPUApplyPostFXInternal(Diligent::IDeviceContext* render_context,
+                              Diligent::ITexture* src,
+                              Diligent::ITexture* dst);
   void GPUPresentScreenBufferInternal(
       Diligent::IDeviceContext* render_context,
       Diligent::ImGuiDiligentRenderer* gui_renderer);
@@ -165,6 +175,7 @@ class RenderScreenImpl : public Graphics, public EngineObject {
   uint64_t frame_count_;
   uint32_t frame_rate_;
   base::Vec2i origin_;
+  int32_t render_filter_;
 };
 
 }  // namespace content

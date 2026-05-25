@@ -110,6 +110,16 @@ Binding_BitmapFilter::Binding_BitmapFilter(ShaderBinding* binding)
       (*this)->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "u_Texture");
 }
 
+Binding_CRTFilter::Binding_CRTFilter(ShaderBinding* binding)
+    : RenderBindingBase(binding) {
+  u_transform = (*this)->GetVariableByName(Diligent::SHADER_TYPE_VERTEX,
+                                           "WorldMatrixBuffer");
+  u_texture =
+      (*this)->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "u_Texture");
+  u_params = (*this)->GetVariableByName(Diligent::SHADER_TYPE_PIXEL,
+                                        "CRTUniformConstants");
+}
+
 Binding_YUV::Binding_YUV(ShaderBinding* binding) : RenderBindingBase(binding) {
   u_texture_y =
       (*this)->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "u_TextureY");

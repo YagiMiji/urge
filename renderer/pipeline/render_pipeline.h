@@ -117,6 +117,7 @@ PIPELINE_DEFINE(VagueTransition, MAKE_BINDING_FUNCTION(Binding_VagueTrans, 0););
 PIPELINE_DEFINE(Tilemap, MAKE_BINDING_FUNCTION(Binding_Tilemap, 0););
 PIPELINE_DEFINE(Tilemap2, MAKE_BINDING_FUNCTION(Binding_Tilemap2, 0););
 PIPELINE_DEFINE(YUV, MAKE_BINDING_FUNCTION(Binding_YUV, 0););
+PIPELINE_DEFINE(CRTFilter, MAKE_BINDING_FUNCTION(Binding_CRTFilter, 0););
 
 #undef PIPELINE_DEFINE
 #undef MAKE_BINDING_FUNCTION
@@ -137,6 +138,7 @@ struct PipelineSet {
   Pipeline_Tilemap2 tilemap2;
   Pipeline_BitmapHue bitmaphue;
   Pipeline_YUV yuv;
+  Pipeline_CRTFilter crt_filter;
 
   PipelineSet(const PipelineInitParams& init_params)
       : base(init_params),
@@ -150,7 +152,8 @@ struct PipelineSet {
         tilemap(init_params),
         tilemap2(init_params),
         bitmaphue(init_params),
-        yuv(init_params) {}
+        yuv(init_params),
+        crt_filter(init_params) {}
 };
 
 }  // namespace renderer

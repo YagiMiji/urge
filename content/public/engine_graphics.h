@@ -19,6 +19,13 @@ class URGE_OBJECT(Graphics) {
  public:
   virtual ~Graphics() = default;
 
+  /*--urge(name:RenderFilter)--*/
+  enum RenderFilter {
+    FILTER_NONE = 0,
+    FILTER_CRT,
+    FILTER_NUMS,
+  };
+
   /*--urge(name:update)--*/
   virtual void Update(ExceptionState& exception_state) = 0;
 
@@ -149,6 +156,9 @@ class URGE_OBJECT(Graphics) {
 
   /*--urge(name:window_title)--*/
   URGE_EXPORT_ATTRIBUTE(WindowTitle, std::string);
+
+  /*--urge(name:render_filter)--*/
+  URGE_EXPORT_ATTRIBUTE(RenderFilter, RenderFilter);
 };
 
 }  // namespace content

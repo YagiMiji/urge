@@ -215,6 +215,25 @@ class Binding_BitmapFilter : public RenderBindingBase {
   Binding_BitmapFilter(ShaderBinding* binding);
 };
 
+class Binding_CRTFilter : public RenderBindingBase {
+ public:
+  // Layout matches the CRTUniformConstants cbuffer in builtin_hlsl_postfx.cc.
+  struct Params {
+    base::Vec4 Params0;  // (resolution.x, resolution.y, scanline_count, scanline_intensity)
+    base::Vec4 Params1;  // (grille_intensity, curvature, vignette_strength, brightness)
+  };
+
+  Binding_CRTFilter() = default;
+
+  RRefPtr<ShaderVariable> u_transform;
+  RRefPtr<ShaderVariable> u_texture;
+  RRefPtr<ShaderVariable> u_params;
+
+ private:
+  friend class RenderBindingBase;
+  Binding_CRTFilter(ShaderBinding* binding);
+};
+
 class Binding_YUV : public RenderBindingBase {
  public:
   Binding_YUV() = default;

@@ -271,6 +271,21 @@ PipelineCollection::PipelineCollection(renderer::PipelineSet* loader) {
                               default_sample);
   }
 
+  {  // CRT post-process filter - no scissor - no depth - no blend
+    Diligent::BlendStateDesc blend_state;
+
+    Diligent::DepthStencilStateDesc depth_stencil_state =
+        GetDefaultDepthStencilState(false);
+
+    Diligent::RasterizerStateDesc rasterizer_state = Get2DRasterizerState();
+    rasterizer_state.ScissorEnable = Diligent::False;
+
+    loader->crt_filter.BuildPipeline(
+        &crt_filter, blend_state, rasterizer_state, depth_stencil_state,
+        primitive_topology, {target_format}, Diligent::TEX_FORMAT_UNKNOWN,
+        default_sample);
+  }
+
   {  // Window (present) - with scissor - with depth
     // With blend
     Diligent::BlendStateDesc blend_state;

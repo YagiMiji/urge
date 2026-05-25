@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:danielilett.com)",
+      "WebSearch",
+      "Bash(cmake -S . -B out)",
+      "Bash(cmake --build out --target Game)"
+    ]
+  }
+}

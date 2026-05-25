@@ -14,6 +14,8 @@ set(ENGINE_RENDERER_SRC
   layout/uniform_layout.h
   pipeline/builtin_hlsl.cc
   pipeline/builtin_hlsl.h
+  pipeline/builtin_hlsl_postfx.cc
+  pipeline/builtin_hlsl_postfx.h
   pipeline/render_binding.cc
   pipeline/render_binding.h
   pipeline/render_pipeline.cc

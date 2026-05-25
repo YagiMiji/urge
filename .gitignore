@@ -13,3 +13,7 @@
 /admenri
 ruby_wasm
 __pycache__
+
+/.trae
+/.vscode
+/docs
