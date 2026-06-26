@@ -58,10 +58,10 @@ class MouseImpl : public Mouse, public EngineObject {
   void UpdateInternal();
 
   struct MouseState {
-    base::Vec2 position;
-    base::Vec2 scroll;
-    std::array<bool, MOUSE_BUTTON_COUNT> states;
-    std::array<uint8_t, MOUSE_BUTTON_COUNT> clicks;
+    base::Vec2 position = {};
+    base::Vec2 scroll = {};
+    std::array<bool, MOUSE_BUTTON_COUNT> states = {};
+    std::array<uint8_t, MOUSE_BUTTON_COUNT> clicks = {};
   };
 
   struct BindingState {
@@ -72,9 +72,8 @@ class MouseImpl : public Mouse, public EngineObject {
   };
 
   struct {
-    base::Vec2 last_position;
-    base::Vec2 scroll;
-    base::Vec2 last_scroll;
+    base::Vec2 last_position = {};
+    base::Vec2 scroll = {};
     int32_t is_moved = 0;
   } entity_state_;
 

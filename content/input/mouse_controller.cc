@@ -33,7 +33,8 @@ void MouseImpl::ProcessEvent(
         raw_state_.position = event->relative_position;
         break;
       case MouseEvent::TYPE_MOUSE_WHEEL:
-        raw_state_.scroll = event->wheel_offset;
+        raw_state_.scroll.x += event->wheel_offset.x;
+        raw_state_.scroll.y += event->wheel_offset.y;
         break;
       default:
         break;
@@ -41,6 +42,7 @@ void MouseImpl::ProcessEvent(
   } else {
     for (auto& it : raw_state_.states)
       it = false;
+    raw_state_.scroll = {};
   }
 }
 
@@ -128,15 +130,8 @@ void MouseImpl::UpdateInternal() {
   entity_state_.is_moved = entity_state_.last_position != raw_state_.position;
   entity_state_.last_position = raw_state_.position;
 
-  entity_state_.scroll.x = 0.0f;
-  if (entity_state_.last_scroll.x != raw_state_.scroll.x)
-    entity_state_.scroll.x = raw_state_.scroll.x - entity_state_.last_scroll.x;
-  entity_state_.last_scroll.x = raw_state_.scroll.x;
-
-  entity_state_.scroll.y = 0.0f;
-  if (entity_state_.last_scroll.y != raw_state_.scroll.y)
-    entity_state_.scroll.y = raw_state_.scroll.y - entity_state_.last_scroll.y;
-  entity_state_.last_scroll.y = raw_state_.scroll.y;
+  entity_state_.scroll = raw_state_.scroll;
+  raw_state_.scroll = {};
 }
 
 }  // namespace content
