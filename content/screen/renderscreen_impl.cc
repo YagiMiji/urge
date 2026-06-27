@@ -4,6 +4,7 @@
 
 #include "content/screen/renderscreen_impl.h"
 
+#include <algorithm>
 #include <unordered_map>
 
 #include "SDL3/SDL_events.h"
@@ -27,6 +28,53 @@
 
 namespace content {
 
+namespace {
+
+struct RenderFilterParamDefinition {
+  Graphics::RenderFilter filter;
+  const char* name;
+  float default_value;
+  float min_value;
+  float max_value;
+};
+
+constexpr RenderFilterParamDefinition kRenderFilterParamDefinitions[] = {
+    {Graphics::FILTER_CRT, "scanline_count", 240.0f, 1.0f, 4096.0f},
+    {Graphics::FILTER_CRT, "scanline_intensity", 0.4f, 0.0f, 1.0f},
+    {Graphics::FILTER_CRT, "grille_intensity", 0.5f, 0.0f, 1.0f},
+    {Graphics::FILTER_CRT, "curvature", 0.1f, 0.0f, 1.0f},
+    {Graphics::FILTER_CRT, "vignette_strength", 0.3f, 0.0f, 1.0f},
+    {Graphics::FILTER_CRT, "brightness", 1.4f, 0.0f, 4.0f},
+};
+
+bool IsRenderFilterValid(Graphics::RenderFilter filter) {
+  return filter >= Graphics::FILTER_NONE && filter < Graphics::FILTER_NUMS;
+}
+
+const RenderFilterParamDefinition* FindRenderFilterParamDefinition(
+    Graphics::RenderFilter filter,
+    const std::string& name) {
+  for (const auto& definition : kRenderFilterParamDefinitions) {
+    if (definition.filter == filter && name == definition.name)
+      return &definition;
+  }
+
+  return nullptr;
+}
+
+std::vector<std::string> CollectRenderFilterParamNames(
+    Graphics::RenderFilter filter) {
+  std::vector<std::string> result;
+  for (const auto& definition : kRenderFilterParamDefinitions) {
+    if (definition.filter == filter)
+      result.push_back(definition.name);
+  }
+
+  return result;
+}
+
+}  // namespace
+
 ///////////////////////////////////////////////////////////////////////////////
 // RenderScreenImpl Implement
 
@@ -38,7 +86,10 @@ RenderScreenImpl::RenderScreenImpl(ExecutionContext* execution_context,
       brightness_(255),
       frame_count_(0),
       frame_rate_(frame_rate),
-      render_filter_(FILTER_NONE) {
+      render_filter_(FILTER_NONE),
+      render_filter_params_(FILTER_NUMS) {
+  ResetAllRenderFilterParams();
+
   // Setup render device on render thread if possible
   GPUCreateGraphicsHostInternal();
 
@@ -390,6 +441,85 @@ GPU::ValueType RenderScreenImpl::GetInternalIndexType(
     ExceptionState& exception_state) {
   auto& quad_index = context()->render.quad_index;
   return static_cast<GPU::ValueType>(quad_index->GetIndexType());
+}
+
+void RenderScreenImpl::SetRenderFilterParam(
+    RenderFilter filter,
+    const std::string& name,
+    float value,
+    ExceptionState& exception_state) {
+  if (!IsRenderFilterValid(filter)) {
+    exception_state.ThrowError(ExceptionCode::CONTENT_ERROR,
+                               "Invalid render filter: %d.",
+                               static_cast<int32_t>(filter));
+    return;
+  }
+
+  const auto* definition = FindRenderFilterParamDefinition(filter, name);
+  if (!definition) {
+    exception_state.ThrowError(
+        ExceptionCode::CONTENT_ERROR,
+        "Unknown render filter parameter '%s' for filter %d.", name.c_str(),
+        static_cast<int32_t>(filter));
+    return;
+  }
+
+  render_filter_params_[static_cast<size_t>(filter)][name] =
+      std::clamp(value, definition->min_value, definition->max_value);
+}
+
+float RenderScreenImpl::GetRenderFilterParam(
+    RenderFilter filter,
+    const std::string& name,
+    ExceptionState& exception_state) {
+  if (!IsRenderFilterValid(filter)) {
+    exception_state.ThrowError(ExceptionCode::CONTENT_ERROR,
+                               "Invalid render filter: %d.",
+                               static_cast<int32_t>(filter));
+    return 0.0f;
+  }
+
+  if (!FindRenderFilterParamDefinition(filter, name)) {
+    exception_state.ThrowError(
+        ExceptionCode::CONTENT_ERROR,
+        "Unknown render filter parameter '%s' for filter %d.", name.c_str(),
+        static_cast<int32_t>(filter));
+    return 0.0f;
+  }
+
+  return GetRenderFilterParamValue(filter, name);
+}
+
+std::vector<std::string> RenderScreenImpl::GetRenderFilterParamNames(
+    RenderFilter filter,
+    ExceptionState& exception_state) {
+  if (!IsRenderFilterValid(filter)) {
+    exception_state.ThrowError(ExceptionCode::CONTENT_ERROR,
+                               "Invalid render filter: %d.",
+                               static_cast<int32_t>(filter));
+    return {};
+  }
+
+  return CollectRenderFilterParamNames(filter);
+}
+
+void RenderScreenImpl::ResetRenderFilterParams(
+    RenderFilter filter,
+    ExceptionState& exception_state) {
+  if (!IsRenderFilterValid(filter)) {
+    exception_state.ThrowError(ExceptionCode::CONTENT_ERROR,
+                               "Invalid render filter: %d.",
+                               static_cast<int32_t>(filter));
+    return;
+  }
+
+  const size_t filter_index = static_cast<size_t>(filter);
+  render_filter_params_[filter_index].clear();
+  for (const auto& definition : kRenderFilterParamDefinitions) {
+    if (definition.filter == filter)
+      render_filter_params_[filter_index][definition.name] =
+          definition.default_value;
+  }
 }
 
 URGE_DEFINE_OVERRIDE_ATTRIBUTE(
@@ -875,6 +1005,35 @@ void RenderScreenImpl::GPURenderVagueTransitionFrameInternal(
   render_context->DrawIndexed(draw_indexed_attribs);
 }
 
+void RenderScreenImpl::ResetAllRenderFilterParams() {
+  render_filter_params_.clear();
+  render_filter_params_.resize(FILTER_NUMS);
+
+  for (const auto& definition : kRenderFilterParamDefinitions) {
+    const size_t filter_index = static_cast<size_t>(definition.filter);
+    render_filter_params_[filter_index][definition.name] =
+        definition.default_value;
+  }
+}
+
+float RenderScreenImpl::GetRenderFilterParamValue(
+    RenderFilter filter,
+    const std::string& name) const {
+  if (!IsRenderFilterValid(filter))
+    return 0.0f;
+
+  const auto* definition = FindRenderFilterParamDefinition(filter, name);
+  if (!definition)
+    return 0.0f;
+
+  const auto& params = render_filter_params_[static_cast<size_t>(filter)];
+  auto it = params.find(name);
+  if (it != params.end())
+    return it->second;
+
+  return definition->default_value;
+}
+
 void RenderScreenImpl::GPUApplyPostFXInternal(
     Diligent::IDeviceContext* render_context,
     Diligent::ITexture* src,
@@ -893,16 +1052,22 @@ void RenderScreenImpl::GPUApplyPostFXInternal(
       return;
   }
 
-  // Update CRT uniform constants.  Hard-coded defaults per task plan D3=A.
+  // Update CRT uniform constants.
   renderer::Binding_CRTFilter::Params uniform;
   uniform.Params0 = base::Vec4(static_cast<float>(screen_size.x),
                                static_cast<float>(screen_size.y),
-                               240.0f,  // scanline_count
-                               0.4f);   // scanline_intensity
-  uniform.Params1 = base::Vec4(0.5f,    // grille_intensity
-                               0.1f,    // curvature
-                               0.3f,    // vignette_strength
-                               1.4f);   // brightness
+                               GetRenderFilterParamValue(
+                                   FILTER_CRT, "scanline_count"),
+                               GetRenderFilterParamValue(
+                                   FILTER_CRT, "scanline_intensity"));
+  uniform.Params1 = base::Vec4(GetRenderFilterParamValue(FILTER_CRT,
+                                                         "grille_intensity"),
+                               GetRenderFilterParamValue(FILTER_CRT,
+                                                         "curvature"),
+                               GetRenderFilterParamValue(
+                                   FILTER_CRT, "vignette_strength"),
+                               GetRenderFilterParamValue(FILTER_CRT,
+                                                         "brightness"));
   render_context->UpdateBuffer(
       gpu_.crt_uniform_buffer, 0, sizeof(uniform), &uniform,
       Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);

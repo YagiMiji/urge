@@ -5,6 +5,9 @@
 #ifndef CONTENT_PUBLIC_ENGINE_GRAPHICS_H_
 #define CONTENT_PUBLIC_ENGINE_GRAPHICS_H_
 
+#include <string>
+#include <vector>
+
 #include "base/memory/ref_counted.h"
 #include "content/content_config.h"
 #include "content/context/exception_state.h"
@@ -123,6 +126,26 @@ class URGE_OBJECT(Graphics) {
   /*--urge(name:internal_index_type)--*/
   virtual GPU::ValueType GetInternalIndexType(
       ExceptionState& exception_state) = 0;
+
+  /*--urge(name:set_render_filter_param)--*/
+  virtual void SetRenderFilterParam(RenderFilter filter,
+                                    const std::string& name,
+                                    float value,
+                                    ExceptionState& exception_state) = 0;
+
+  /*--urge(name:render_filter_param)--*/
+  virtual float GetRenderFilterParam(RenderFilter filter,
+                                     const std::string& name,
+                                     ExceptionState& exception_state) = 0;
+
+  /*--urge(name:render_filter_param_names)--*/
+  virtual std::vector<std::string> GetRenderFilterParamNames(
+      RenderFilter filter,
+      ExceptionState& exception_state) = 0;
+
+  /*--urge(name:reset_render_filter_params)--*/
+  virtual void ResetRenderFilterParams(RenderFilter filter,
+                                       ExceptionState& exception_state) = 0;
 
   /*--urge(name:frame_rate)--*/
   URGE_EXPORT_ATTRIBUTE(FrameRate, uint32_t);

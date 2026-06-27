@@ -5,6 +5,10 @@
 #ifndef CONTENT_SCREEN_RENDERSCREEN_IMPL_H_
 #define CONTENT_SCREEN_RENDERSCREEN_IMPL_H_
 
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include "imgui/backends/imgui_impl_diligent.h"
 
 #include "base/worker/thread_worker.h"
@@ -123,6 +127,18 @@ class RenderScreenImpl : public Graphics, public EngineObject {
       uint32_t draw_quad_count,
       ExceptionState& exception_state) override;
   GPU::ValueType GetInternalIndexType(ExceptionState& exception_state) override;
+  void SetRenderFilterParam(RenderFilter filter,
+                            const std::string& name,
+                            float value,
+                            ExceptionState& exception_state) override;
+  float GetRenderFilterParam(RenderFilter filter,
+                             const std::string& name,
+                             ExceptionState& exception_state) override;
+  std::vector<std::string> GetRenderFilterParamNames(
+      RenderFilter filter,
+      ExceptionState& exception_state) override;
+  void ResetRenderFilterParams(RenderFilter filter,
+                               ExceptionState& exception_state) override;
 
   URGE_DECLARE_OVERRIDE_ATTRIBUTE(FrameRate, uint32_t);
   URGE_DECLARE_OVERRIDE_ATTRIBUTE(FrameCount, uint32_t);
@@ -163,6 +179,9 @@ class RenderScreenImpl : public Graphics, public EngineObject {
       Diligent::ITextureView* trans_mapping,
       float progress,
       float vague);
+  void ResetAllRenderFilterParams();
+  float GetRenderFilterParamValue(RenderFilter filter,
+                                  const std::string& name) const;
 
   GPUData gpu_;
   DrawNodeController controller_;
@@ -176,6 +195,7 @@ class RenderScreenImpl : public Graphics, public EngineObject {
   uint32_t frame_rate_;
   base::Vec2i origin_;
   int32_t render_filter_;
+  std::vector<std::unordered_map<std::string, float>> render_filter_params_;
 };
 
 }  // namespace content

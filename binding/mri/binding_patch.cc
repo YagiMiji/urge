@@ -4,7 +4,11 @@
 
 #include "binding/mri/binding_patch.h"
 
+#include <utility>
+#include <vector>
+
 #include "content/input/mouse_controller.h"
+#include "content/public/engine_graphics.h"
 #include "content/public/engine_input.h"
 
 namespace binding {
@@ -43,7 +47,103 @@ std::string GetButtonSymbol(int argc, VALUE* argv) {
   return sym;
 }
 
+std::string GetRenderFilterParamName(VALUE value) {
+  if (SYMBOL_P(value))
+    return rb_id2name(SYM2ID(value));
+
+  if (RB_TYPE_P(value, RUBY_T_STRING))
+    return std::string(RSTRING_PTR(value), RSTRING_LEN(value));
+
+  rb_raise(rb_eTypeError,
+           "Render filter parameter name must be a Symbol or String.");
+  return {};
+}
+
+float GetRenderFilterParamNumericValue(VALUE value) {
+  if (!rb_obj_is_kind_of(value, rb_cNumeric))
+    rb_raise(rb_eTypeError, "Render filter parameter value must be Numeric.");
+
+  return static_cast<float>(NUM2DBL(value));
+}
+
+std::vector<std::string> GetRenderFilterParamNamesOrRaise(
+    scoped_refptr<content::Graphics> graphics,
+    content::Graphics::RenderFilter filter) {
+  content::ExceptionState exception_state;
+  std::vector<std::string> names =
+      graphics->GetRenderFilterParamNames(filter, exception_state);
+  MriProcessException(exception_state);
+
+  if (names.empty()) {
+    rb_raise(MriGetException(content::ExceptionCode::CONTENT_ERROR),
+             "Render filter %d has no parameters.", static_cast<int>(filter));
+  }
+
+  return names;
+}
+
 }  // namespace
+
+MRI_METHOD(graphics_set_render_filter_params) {
+  int32_t filter_id;
+  VALUE params_hash;
+  MriParseArgsTo(argc, argv, "io", &filter_id, &params_hash);
+
+  if (!RB_TYPE_P(params_hash, RUBY_T_HASH))
+    rb_raise(rb_eTypeError, "Expected render filter params Hash.");
+
+  scoped_refptr<content::Graphics> graphics = MriGetGlobalModules()->Graphics;
+  auto filter = static_cast<content::Graphics::RenderFilter>(filter_id);
+  GetRenderFilterParamNamesOrRaise(graphics, filter);
+
+  using ParamUpdate = std::pair<std::string, float>;
+  std::vector<ParamUpdate> updates;
+
+  VALUE keys = rb_funcall(params_hash, rb_intern("keys"), 0);
+  updates.reserve(RARRAY_LEN(keys));
+  for (long i = 0; i < RARRAY_LEN(keys); ++i) {
+    VALUE key = rb_ary_entry(keys, i);
+    std::string name = GetRenderFilterParamName(key);
+    VALUE param_value = rb_hash_aref(params_hash, key);
+    float value = GetRenderFilterParamNumericValue(param_value);
+
+    content::ExceptionState exception_state;
+    graphics->GetRenderFilterParam(filter, name, exception_state);
+    MriProcessException(exception_state);
+
+    updates.emplace_back(name, value);
+  }
+
+  for (const auto& update : updates) {
+    content::ExceptionState exception_state;
+    graphics->SetRenderFilterParam(filter, update.first, update.second,
+                                   exception_state);
+    MriProcessException(exception_state);
+  }
+
+  return Qnil;
+}
+
+MRI_METHOD(graphics_render_filter_params) {
+  int32_t filter_id;
+  MriParseArgsTo(argc, argv, "i", &filter_id);
+
+  scoped_refptr<content::Graphics> graphics = MriGetGlobalModules()->Graphics;
+  auto filter = static_cast<content::Graphics::RenderFilter>(filter_id);
+  std::vector<std::string> names =
+      GetRenderFilterParamNamesOrRaise(graphics, filter);
+
+  VALUE result = rb_hash_new();
+  for (const auto& name : names) {
+    content::ExceptionState exception_state;
+    float value = graphics->GetRenderFilterParam(filter, name, exception_state);
+    MriProcessException(exception_state);
+
+    rb_hash_aset(result, ID2SYM(rb_intern(name.c_str())), DBL2NUM(value));
+  }
+
+  return result;
+}
 
 MRI_METHOD(input_is_pressed) {
   scoped_refptr<content::Input> input = MriGetGlobalModules()->Input;
@@ -86,6 +186,15 @@ void ApplyInputPatch() {
   }
 }
 
+void ApplyGraphicsPatch() {
+  VALUE klass = rb_const_get(rb_cObject, rb_intern("Graphics"));
+
+  MriDefineModuleFunction(klass, "set_render_filter_params",
+                          graphics_set_render_filter_params);
+  MriDefineModuleFunction(klass, "render_filter_params",
+                          graphics_render_filter_params);
+}
+
 struct MouseButtonSet {
   std::string name;
   int button_id;
@@ -108,6 +217,7 @@ void ApplyMousePatch() {
 }
 
 void MriApplyBindingPatch() {
+  ApplyGraphicsPatch();
   ApplyInputPatch();
   ApplyMousePatch();
 }
